@@ -1,0 +1,583 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Daily Challenge Tracker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=DM+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: header with live stats, a weekday-aligned calendar beside the selected day's task list, progress chart underneath. Red marker X on crossed days, blue ink for everything else. */
+:root {
+  --bg: #F2F5F9;
+  --surface: #FFFFFF;
+  --fg: #16213A;
+  --muted: #56627D;
+  --line: #D9E0EA;
+  --accent: #1F4FD8;
+  --accent-ink: #FFFFFF;
+  --sel: #E3EAFB;
+  --mark: #D12A3F;
+  --area: #DCE6FB;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "DM Sans", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1524; --surface: #16203A; --fg: #E6EBF5; --muted: #9AA7C0; --line: #2A3656;
+    --accent: #6C93FF; --accent-ink: #0E1524; --sel: #22305A; --mark: #FF6577; --area: #1D2B52;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1524; --surface: #16203A; --fg: #E6EBF5; --muted: #9AA7C0; --line: #2A3656;
+  --accent: #6C93FF; --accent-ink: #0E1524; --sel: #22305A; --mark: #FF6577; --area: #1D2B52;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(1.6rem, 4vw, 2.2rem); line-height: 1.1; }
+h2 { font-size: 1.5rem; line-height: 1.15; }
+h3 { font-size: 1.05rem; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; }
+.top .sub { color: var(--muted); margin-top: 6px; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  padding: 9px 16px; font-weight: 600; cursor: pointer; min-height: 40px;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { border-color: var(--mark); color: var(--mark); }
+.btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+.btn.small { padding: 6px 12px; min-height: 34px; font-size: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* stats */
+.stats { display: flex; flex-wrap: wrap; gap: 20px 40px; align-items: flex-end; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.stat { min-width: 0; }
+.stat b { display: block; font-family: var(--font-display); font-size: 2rem; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 13px; }
+.bar { flex: 1 1 220px; min-width: 0; }
+.bar .track { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; margin-top: 8px; }
+.bar .fill { height: 100%; background: var(--accent); border-radius: 99px; width: 0; }
+
+/* main two-column */
+.main { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.cal-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
+.grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.wd { text-align: center; font-size: 12px; font-weight: 600; color: var(--muted); padding-bottom: 2px; letter-spacing: 0.04em; }
+.cell {
+  position: relative; aspect-ratio: 1; min-height: 44px; padding: 0; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;
+}
+.cell:hover { border-color: var(--accent); }
+.cell .n { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.cell .dt { font-size: 10.5px; color: var(--muted); margin-top: 3px; line-height: 1; }
+.cell.future .n { color: var(--muted); font-weight: 600; }
+.cell.sel { background: var(--sel); border-color: var(--accent); }
+.cell.today { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cell .x { position: absolute; inset: 6px; width: calc(100% - 12px); height: calc(100% - 12px); pointer-events: none; }
+.cell .x path { stroke: var(--mark); stroke-width: 3; stroke-linecap: round; fill: none; vector-effect: non-scaling-stroke; }
+.cell.crossed .n { opacity: 0.55; }
+.cell .prog { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); opacity: 0.8; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
+
+/* day panel */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ph { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
+.ph .of { color: var(--muted); font-weight: 600; font-size: 1rem; }
+.ph .when { color: var(--muted); margin-top: 4px; }
+.tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.task { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
+.task:first-child { border-top: 0; }
+.task input[type="checkbox"] { width: 22px; height: 22px; flex: none; accent-color: var(--accent); cursor: pointer; margin: 0; }
+.task .tx { flex: 1; min-width: 0; border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 6px 8px; }
+.task .tx:hover { border-color: var(--line); }
+.task .tx:focus { border-color: var(--accent); background: var(--bg); outline: none; }
+.task.done .tx { text-decoration: line-through; color: var(--muted); }
+.task .rm { border: 0; background: transparent; color: var(--muted); cursor: pointer; width: 32px; height: 32px; border-radius: 6px; flex: none; font-size: 18px; line-height: 1; }
+.task .rm:hover { color: var(--mark); background: var(--bg); }
+.add { display: flex; gap: 8px; }
+.add input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 9px 12px; }
+.add input:focus { border-color: var(--accent); outline: none; }
+.count { font-weight: 600; }
+.fillbox { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; border-top: 1px solid var(--line); padding-top: 14px; }
+.note { font-size: 13px; color: var(--muted); }
+
+/* chart */
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-width: 0; }
+.chart svg { display: block; width: 100%; height: auto; }
+.chart .gl { stroke: var(--line); stroke-width: 1; }
+.chart .tk { fill: var(--muted); font-size: 11px; font-family: var(--font-body); }
+.chart .ideal { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 5; fill: none; }
+.chart .line { stroke: var(--accent); stroke-width: 2.5; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.chart .area { fill: var(--area); }
+.chart .dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.chart .lbl { fill: var(--fg); font-size: 12px; font-weight: 600; font-family: var(--font-body); }
+.chart .ytitle { fill: var(--muted); font-size: 11px; font-family: var(--font-body); }
+
+/* setup */
+.setup { max-width: 460px; margin: 6vh auto 0; display: flex; flex-direction: column; gap: 18px; }
+.setup .lede { color: var(--muted); }
+.fld { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
+.fld input { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; font-weight: 400; font-size: 16px; }
+.fld input:focus { border-color: var(--accent); outline: none; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 5px 14px; cursor: pointer; font-size: 14px; }
+.chip:hover { border-color: var(--accent); }
+.err { color: var(--mark); font-size: 14px; min-height: 1.2em; }
+.foot { font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .cell, .btn, .chip { transition: border-color 0.12s, background 0.12s; }
+  .bar .fill { transition: width 0.4s ease; }
+}
+@media (max-width: 480px) {
+  .cell .n { font-size: 1rem; }
+  .cell .dt { font-size: 9.5px; }
+  .panel, .chart { padding: 16px; }
+}
+</style>
+
+<div class="wrap" id="app"></div>
+
+<script>
+(function () {
+  "use strict";
+  var KEY = "challenge-tracker-v1";
+  var app = document.getElementById("app");
+  var S = null;          // { name, days, start, crossed:{}, tasks:{} }
+  var sel = 1;
+  var confirmReset = false;
+  var dbDoc = null;
+  var where = "pending"; // pending | account | device
+  var saveNote = "";
+  var confirmFill = false, fillNote = "";
+
+  /* ---------- helpers ---------- */
+  function h(tag, attrs) {
+    var e = document.createElement(tag);
+    attrs = attrs || {};
+    Object.keys(attrs).forEach(function (k) {
+      var v = attrs[k];
+      if (k === "class") e.className = v;
+      else if (k.indexOf("on") === 0) e.addEventListener(k.slice(2), v);
+      else if (v === true) e.setAttribute(k, "");
+      else if (v !== false && v != null) e.setAttribute(k, v);
+    });
+    for (var i = 2; i < arguments.length; i++) append(e, arguments[i]);
+    return e;
+  }
+  function append(e, c) {
+    if (c == null || c === false) return;
+    if (Array.isArray(c)) { c.forEach(function (x) { append(e, x); }); return; }
+    e.appendChild(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  function svgEl(tag, attrs) {
+    var e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    for (var i = 2; i < arguments.length; i++) if (arguments[i]) e.appendChild(typeof arguments[i] === "string" ? document.createTextNode(arguments[i]) : arguments[i]);
+    return e;
+  }
+  var pad = function (n) { return String(n).padStart(2, "0"); };
+  var iso = function (d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); };
+  var parse = function (s) { var p = s.split("-").map(Number); return new Date(p[0], p[1] - 1, p[2]); };
+  var addDays = function (d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); };
+  var today0 = function () { var n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); };
+  var dayDate = function (n) { return addDays(parse(S.start), n - 1); };
+  var todayIdx = function () { return Math.round((today0() - parse(S.start)) / 864e5) + 1; };
+  var fmt = function (d) { return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }); };
+  var fmtLong = function (d) { return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
+  var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
+  var clone = function (o) { return JSON.parse(JSON.stringify(o)); };
+  var uid = function () { return "u" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); };
+
+  /* ---------- daily task library (a different mix every day) ---------- */
+  var MOVE = ["Walk for 20 minutes", "15 push-ups, in sets if you like", "10 minutes of stretching", "30 squats", "Take the stairs all day", "Hold a plank for 5 minutes in total", "Brisk walk or jog for 15 minutes", "10 minute yoga flow", "Dance to two songs", "Walk or cycle to one errand", "100 jumping jacks", "Hip and back mobility routine"];
+  var MIND = ["Read 10 pages", "Learn 5 new words", "Study one topic for 25 minutes", "Watch one short lesson and note one idea", "Practice a skill for 20 minutes", "Solve 3 practice problems", "Write 10 lines of notes on what you learned", "Listen to one educational podcast", "Revise yesterday's notes for 5 minutes", "Explain one idea to someone", "Go through one flashcard set", "Read one long article and write a summary"];
+  var CARE = ["Drink 8 glasses of water", "No sugary drinks today", "Be in bed before 11 pm", "Eat one fruit and one vegetable", "Breathe quietly for 10 minutes", "Phone away one hour before bed", "Prepare tomorrow's meal", "No snacks after dinner", "15 minutes in daylight", "Wake up at your usual time", "Clear your desk for 5 minutes", "Eat one meal without a screen"];
+  var REFL = ["Write 3 things you are grateful for", "Plan your top 3 tasks for tomorrow", "Journal for 5 minutes", "Tidy one small space", "Message someone you care about", "Check today's spending", "Write one thing you did well today", "Give away or bin 5 items", "Spend 10 minutes on a personal goal", "Note your mood and why", "Finish one task you have been postponing", "Write tomorrow's intention"];
+
+  function gen(d, N) {
+    var list = [
+      MOVE[(d - 1) % 12],
+      MIND[(d * 5) % 12],
+      CARE[(d * 7 + 2) % 12],
+      REFL[(d * 11 + 4) % 12]
+    ];
+    if (d % 7 === 0) list.push("Weekly review: write what worked and what did not");
+    if (d === N) list.push("Look back: write what has changed since day 1");
+    return list.map(function (t, i) { return { id: "d" + d + "-" + i, t: t, done: false }; });
+  }
+  function peek(d) { return S.tasks[d] || gen(d, S.days); }
+  function ensure(d) { if (!S.tasks[d]) S.tasks[d] = gen(d, S.days); return S.tasks[d]; }
+
+  /* ---------- storage ---------- */
+  function loadLocal() {
+    try { var r = localStorage.getItem(KEY); if (r) return normalize(JSON.parse(r)); } catch (e) {}
+    return null;
+  }
+  function normalize(o) {
+    if (!o || typeof o !== "object" || !o.days || !o.start) return null;
+    return { name: String(o.name || "My challenge"), days: clamp(Math.floor(+o.days) || 30, 1, 365), start: String(o.start), crossed: o.crossed || {}, tasks: o.tasks || {}, updatedAt: +o.updatedAt || 0 };
+  }
+  var timer = null, saving = false, pending = false;
+  function save() {
+    S.updatedAt = Date.now();
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+    clearTimeout(timer);
+    timer = setTimeout(flush, 500);
+  }
+  function flush() {
+    if (!dbDoc || !S || where !== "account") return;
+    if (saving) { pending = true; return; }
+    saving = true;
+    dbDoc.set(clone(S)).then(function () { saveNote = ""; }, function () { saveNote = "Could not reach your account just now. Progress is kept on this device."; })
+      .then(function () { saving = false; updateFoot(); if (pending) { pending = false; flush(); } });
+  }
+  function updateFoot() {
+    var f = document.getElementById("foot");
+    if (!f) return;
+    f.textContent = saveNote || (where === "account" ? "Synced to your Claude account. Open this page signed in on your phone and your laptop to see the same calendar." : where === "device" ? "Saved on this device only. Sign in to Claude on this device to sync it." : "Loading your saved progress...");
+  }
+
+  /* ---------- actions ---------- */
+  function allDone(list) { return list.length > 0 && list.every(function (t) { return t.done; }); }
+  function toggleTask(d, id) {
+    var list = ensure(d), was = allDone(list);
+    list.forEach(function (t) { if (t.id === id) t.done = !t.done; });
+    var now = allDone(list);
+    if (!was && now) S.crossed[d] = true;
+    if (was && !now) delete S.crossed[d];
+    save(); renderAll();
+  }
+  function toggleCross(d) {
+    if (S.crossed[d]) delete S.crossed[d]; else S.crossed[d] = true;
+    save(); renderAll();
+  }
+  function editTask(d, id, text) {
+    var list = ensure(d);
+    list.forEach(function (t) { if (t.id === id) t.t = text.trim() || t.t; });
+    save(); renderStats(); renderChart();
+  }
+  function removeTask(d, id) {
+    S.tasks[d] = ensure(d).filter(function (t) { return t.id !== id; });
+    save(); renderAll();
+  }
+  function addTask(d, text) {
+    text = text.trim(); if (!text) return;
+    ensure(d).push({ id: uid(), t: text, done: false });
+    save(); renderAll();
+    var i = document.getElementById("add-input"); if (i) i.focus();
+  }
+
+  function applyToAll(d) {
+    var src = ensure(d).map(function (t) { return t.t; }), n = 0;
+    for (var i = 1; i <= S.days; i++) {
+      if (i === d) continue;
+      var ex = S.tasks[i];
+      if (S.crossed[i] || (ex && ex.some(function (t) { return t.done; }))) continue;
+      S.tasks[i] = src.map(function (t, k) { return { id: "s" + i + "-" + k, t: t, done: false }; });
+      n++;
+    }
+    confirmFill = false;
+    fillNote = "Done. " + n + (n === 1 ? " other day now has" : " other days now have") + " this list.";
+    save(); renderAll();
+  }
+  function fillBox(d) {
+    var box = h("div", { class: "fillbox" });
+    if (confirmFill) {
+      box.appendChild(h("p", { class: "note" }, "Copy these " + peek(d).length + " tasks to every other day? Days you have already ticked or crossed are left alone."));
+      box.appendChild(h("div", { class: "row" },
+        h("button", { class: "btn small primary", type: "button", onclick: function () { applyToAll(d); } }, "Yes, use for every day"),
+        h("button", { class: "btn small", type: "button", onclick: function () { confirmFill = false; renderPanel(); } }, "Cancel")));
+    } else {
+      box.appendChild(h("button", { class: "btn small", type: "button", onclick: function () { confirmFill = true; fillNote = ""; renderPanel(); } }, "Use this list every day"));
+      if (fillNote) box.appendChild(h("p", { class: "note" }, fillNote));
+    }
+    return box;
+  }
+
+  /* ---------- stats ---------- */
+  function computeStats() {
+    var N = S.days, ti = clamp(todayIdx(), 0, N), crossed = 0, best = 0, run = 0, i;
+    for (i = 1; i <= N; i++) {
+      if (S.crossed[i]) { crossed++; run++; if (run > best) best = run; } else run = 0;
+    }
+    var d = ti; if (d >= 1 && !S.crossed[d]) d--;
+    var streak = 0; while (d >= 1 && S.crossed[d]) { streak++; d--; }
+    var td = 0, tt = 0;
+    for (i = 1; i <= ti; i++) { var l = peek(i); tt += l.length; td += l.filter(function (t) { return t.done; }).length; }
+    return { crossed: crossed, streak: streak, best: best, tasksDone: td, tasksTotal: tt, ti: ti };
+  }
+
+  /* ---------- render ---------- */
+  var elStats, elCal, elPanel, elChart;
+
+  function renderAll() {
+    if (!S) return renderSetup();
+    renderStats(); renderCalendar(); renderPanel(); renderChart();
+  }
+
+  function renderSetup() {
+    var err = h("p", { class: "err", role: "alert" });
+    var nameI = h("input", { id: "f-name", type: "text", maxlength: "60", value: "My challenge" });
+    var daysI = h("input", { id: "f-days", type: "number", min: "1", max: "365", inputmode: "numeric", value: "30" });
+    var startI = h("input", { id: "f-start", type: "date", value: iso(today0()) });
+    var chips = [21, 30, 60, 90, 100].map(function (n) {
+      return h("button", { type: "button", class: "chip", onclick: function () { daysI.value = n; } }, n + " days");
+    });
+    var form = h("form", { class: "setup", onsubmit: function (e) {
+      e.preventDefault();
+      var n = Math.floor(+daysI.value);
+      if (!(n >= 1 && n <= 365)) { err.textContent = "Enter a number of days between 1 and 365."; return; }
+      if (!startI.value) { err.textContent = "Pick a start date."; return; }
+      S = { name: nameI.value.trim() || "My challenge", days: n, start: startI.value, crossed: {}, tasks: {} };
+      sel = clamp(todayIdx(), 1, n);
+      save(); renderAll();
+    } },
+      h("div", null, h("p", { class: "eyebrow" }, "Daily challenge tracker"), h("h1", null, "How many days is your challenge?")),
+      h("p", { class: "lede" }, "You get a calendar to cross off day by day, a different set of tasks for each day that you can edit, and a graph of your progress."),
+      h("label", { class: "fld", for: "f-name" }, "Challenge name", nameI),
+      h("label", { class: "fld", for: "f-days" }, "Number of days", daysI),
+      h("div", { class: "row" }, chips),
+      h("label", { class: "fld", for: "f-start" }, "Start date", startI),
+      err,
+      h("button", { class: "btn primary", type: "submit" }, "Create my calendar"),
+      h("p", { class: "foot", id: "foot" })
+    );
+    app.replaceChildren(form);
+    updateFoot();
+  }
+
+  function renderStats() {
+    if (!elStats) return;
+    var st = computeStats(), N = S.days, pct = Math.round(st.crossed / N * 100);
+    elStats.replaceChildren(
+      h("div", { class: "stat" }, h("b", null, st.crossed + " / " + N), h("span", null, "days crossed")),
+      h("div", { class: "stat" }, h("b", null, String(st.streak)), h("span", null, "day streak (best " + st.best + ")")),
+      h("div", { class: "stat" }, h("b", null, st.tasksDone + " / " + st.tasksTotal), h("span", null, "tasks done so far")),
+      h("div", { class: "bar" },
+        h("div", { class: "row", style: "justify-content:space-between" }, h("span", { class: "muted" }, "Challenge progress"), h("b", null, pct + "%")),
+        h("div", { class: "track", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(pct) }, h("div", { class: "fill", style: "width:" + pct + "%" }))
+      )
+    );
+  }
+
+  function renderCalendar() {
+    var N = S.days, ti = todayIdx(), start = parse(S.start);
+    var offset = (start.getDay() + 6) % 7;
+    var names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    var cells = names.map(function (n) { return h("div", { class: "wd", "aria-hidden": "true" }, n); });
+    for (var i = 0; i < offset; i++) cells.push(h("div", { "aria-hidden": "true" }));
+    var mon = function (d) { return d.toLocaleDateString("en-GB", { month: "short" }); };
+    var _loop = function (d) {
+      var dt = dayDate(d), crossed = !!S.crossed[d], list = peek(d);
+      var frac = list.length ? list.filter(function (t) { return t.done; }).length / list.length : 0;
+      var cls = "cell" + (crossed ? " crossed" : "") + (d === ti ? " today" : "") + (d === sel ? " sel" : "") + (d > ti ? " future" : "");
+      var label = "Day " + d + ", " + fmt(dt) + (crossed ? ", crossed off" : d > ti ? ", upcoming" : ", not crossed");
+      cells.push(h("button", { type: "button", class: cls, "aria-label": label, "aria-pressed": d === sel ? "true" : "false", "aria-current": d === ti ? "date" : null, onclick: function () { sel = d; confirmFill = false; fillNote = ""; renderCalendar(); renderPanel(); } },
+        h("span", { class: "n" }, String(d)),
+        h("span", { class: "dt" }, (dt.getDate() === 1 || d === 1) ? dt.getDate() + " " + mon(dt) : String(dt.getDate())),
+        frac > 0 && !crossed ? h("span", { class: "prog", style: "width:" + Math.round(frac * 100) + "%" }) : null,
+        crossed ? (function () {
+          var s = svgEl("svg", { class: "x", viewBox: "0 0 100 100", preserveAspectRatio: "none", "aria-hidden": "true" },
+            svgEl("path", { d: "M12 14 Q50 48 88 86" }), svgEl("path", { d: "M86 12 Q52 52 14 88" }));
+          return s;
+        })() : null
+      ));
+    };
+    for (var d = 1; d <= N; d++) _loop(d);
+    elCal.replaceChildren(
+      h("div", { class: "cal-head" }, h("h2", null, "Calendar"), h("span", { class: "muted" }, fmt(dayDate(1)) + " to " + fmt(dayDate(N)))),
+      h("div", { class: "grid" }, cells),
+      h("div", { class: "legend" },
+        h("span", null, h("i", { style: "border:2px solid var(--accent)" }), "Today"),
+        h("span", null, h("i", { style: "background:var(--sel);border:1px solid var(--accent)" }), "Selected"),
+        h("span", null, h("i", { style: "border:1px solid var(--line);background:var(--surface);position:relative" }), "Not crossed yet")
+      )
+    );
+  }
+
+  function renderPanel() {
+    var N = S.days, d = sel, ti = todayIdx(), future = d > ti, crossed = !!S.crossed[d];
+    var list = peek(d), done = list.filter(function (t) { return t.done; }).length;
+    var crossBtn = h("button", { type: "button", class: "btn " + (crossed ? "" : "primary"), disabled: future, onclick: function () { toggleCross(d); } },
+      future ? "Opens " + fmt(dayDate(d)) : crossed ? "Uncross day " + d : "Cross off day " + d);
+    var items = list.map(function (t) {
+      var cb = h("input", { type: "checkbox", id: "cb-" + t.id, checked: t.done, disabled: future, "aria-label": "Done: " + t.t, onchange: function () { toggleTask(d, t.id); } });
+      var tx = h("input", { type: "text", class: "tx", id: "tx-" + t.id, maxlength: "120", "aria-label": "Task text", onchange: function (e) { editTask(d, t.id, e.target.value); } });
+      tx.value = t.t;
+      return h("li", { class: "task" + (t.done ? " done" : "") }, cb, tx,
+        h("button", { type: "button", class: "rm", "aria-label": "Remove task: " + t.t, onclick: function () { removeTask(d, t.id); } }, "×"));
+    });
+    var addI = h("input", { type: "text", id: "add-input", maxlength: "120", placeholder: "Add your own task for this day", "aria-label": "Add a task" });
+    var addForm = h("form", { class: "add", onsubmit: function (e) { e.preventDefault(); addTask(d, addI.value); } }, addI, h("button", { class: "btn", type: "submit" }, "Add"));
+    elPanel.replaceChildren(
+      h("div", { class: "ph" },
+        h("div", null,
+          h("p", { class: "eyebrow" }, d === ti ? "Today" : future ? "Upcoming" : "Earlier day"),
+          h("h2", null, "Day " + d, h("span", { class: "of" }, " of " + N)),
+          h("p", { class: "when" }, fmtLong(dayDate(d)))),
+        crossBtn),
+      h("div", null,
+        h("p", { class: "count" }, done + " of " + list.length + " tasks done"),
+        h("p", { class: "note" }, future ? "You can edit this day's tasks now. Ticking opens on the day." : "Tick every task and the day crosses off by itself.")),
+      list.length ? h("ul", { class: "tasks" }, items) : h("p", { class: "muted" }, "No tasks for this day. Add one below."),
+      addForm,
+      N > 1 ? fillBox(d) : null
+    );
+  }
+
+  function niceStep(N) {
+    var c = [1, 2, 5, 10, 20, 25, 50, 100];
+    for (var i = 0; i < c.length; i++) if (N / c[i] <= 6) return c[i];
+    return 100;
+  }
+
+  function renderChart() {
+    var N = S.days, ti = clamp(todayIdx(), 0, N);
+    var W = 640, H = 270, m = { l: 34, r: 22, t: 22, b: 28 };
+    var iw = W - m.l - m.r, ih = H - m.t - m.b;
+    var x = function (v) { return m.l + v / N * iw; };
+    var y = function (v) { return m.t + ih - v / N * ih; };
+    var c = [0], i;
+    for (i = 1; i <= ti; i++) c.push(c[i - 1] + (S.crossed[i] ? 1 : 0));
+    var step = niceStep(N), ticks = [];
+    for (i = 0; i <= N; i += step) ticks.push(i);
+    var svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Line chart of days crossed against day of challenge. " + c[ti] + " of " + N + " days crossed by day " + ti + "." });
+    svg.appendChild(svgEl("text", { class: "ytitle", x: m.l, y: 12 }, "Days crossed"));
+    ticks.forEach(function (t) {
+      svg.appendChild(svgEl("line", { class: "gl", x1: m.l, x2: W - m.r, y1: y(t), y2: y(t) }));
+      svg.appendChild(svgEl("text", { class: "tk", x: m.l - 8, y: y(t) + 4, "text-anchor": "end" }, String(t)));
+      svg.appendChild(svgEl("text", { class: "tk", x: x(t), y: H - 8, "text-anchor": t === 0 ? "start" : t === N ? "end" : "middle" }, String(t)));
+    });
+    svg.appendChild(svgEl("line", { class: "ideal", x1: x(0), y1: y(0), x2: x(N), y2: y(N) }));
+    if (ti >= 1) {
+      var pts = c.map(function (v, d) { return x(d).toFixed(1) + "," + y(v).toFixed(1); });
+      svg.appendChild(svgEl("polygon", { class: "area", points: pts.join(" ") + " " + x(ti).toFixed(1) + "," + y(0).toFixed(1) + " " + x(0).toFixed(1) + "," + y(0).toFixed(1) }));
+      svg.appendChild(svgEl("polyline", { class: "line", points: pts.join(" ") }));
+      var ex = x(ti), ey = y(c[ti]);
+      svg.appendChild(svgEl("circle", { class: "dot", cx: ex, cy: ey, r: 5 }));
+      var right = ex > W - 110;
+      svg.appendChild(svgEl("text", { class: "lbl", x: right ? ex - 10 : ex + 10, y: ey - 10 < m.t + 8 ? ey + 18 : ey - 10, "text-anchor": right ? "end" : "start" }, c[ti] + (c[ti] === 1 ? " day" : " days")));
+    }
+    elChart.replaceChildren(
+      h("div", { class: "cal-head" }, h("h2", null, "Progress"), h("span", { class: "muted" }, ti < 1 ? "Starts " + fmt(dayDate(1)) : "Day " + ti + " of " + N)),
+      svg,
+      h("div", { class: "legend" },
+        h("span", null, h("i", { style: "background:var(--accent)" }), "Your days crossed"),
+        h("span", null, h("i", { style: "border-top:2px dashed var(--muted);height:0;border-radius:0;vertical-align:3px" }), "Every day crossed"))
+    );
+  }
+
+  function renderTracker() {
+    elStats = h("div", { class: "stats" });
+    elCal = h("section", { "aria-label": "Calendar" });
+    elPanel = h("section", { class: "panel", "aria-label": "Selected day" });
+    elChart = h("section", { class: "chart", "aria-label": "Progress chart" });
+    var reset = confirmReset
+      ? h("div", { class: "row" }, h("span", { class: "muted" }, "Delete all progress?"),
+          h("button", { class: "btn small danger", type: "button", onclick: doReset }, "Yes, start over"),
+          h("button", { class: "btn small", type: "button", onclick: function () { confirmReset = false; renderTracker(); renderAll(); } }, "Keep it"))
+      : h("button", { class: "btn small", type: "button", onclick: function () { confirmReset = true; renderTracker(); renderAll(); } }, "Start over");
+    app.replaceChildren(
+      h("header", { class: "top" },
+        h("div", null, h("p", { class: "eyebrow" }, "Daily challenge tracker"), h("h1", null, S.name),
+          h("p", { class: "sub" }, S.days + " days from " + fmtLong(parse(S.start)))),
+        reset),
+      elStats,
+      h("div", { class: "main" }, elCal, elPanel),
+      elChart,
+      h("p", { class: "foot", id: "foot" })
+    );
+    updateFoot();
+  }
+
+  function doReset() {
+    S = null; confirmReset = false;
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    clearTimeout(timer);
+    if (dbDoc) dbDoc.set({ reset: true, updatedAt: Date.now() }).catch(function () {});
+    renderSetup();
+  }
+
+  var origRenderAll = renderAll;
+  renderAll = function () {
+    if (!S) return renderSetup();
+    if (!elStats || !document.body.contains(elStats)) renderTracker();
+    renderStats(); renderCalendar(); renderPanel(); renderChart();
+  };
+
+  /* ---------- boot ---------- */
+  S = loadLocal();
+  if (S) sel = clamp(todayIdx(), 1, S.days);
+  renderAll();
+
+  (function connect() {
+    var c = window.claude, gotAnswer = false, first = true;
+    if (!c || !c.use) { where = "device"; updateFoot(); return; }
+    var wait = setTimeout(function () {
+      if (!gotAnswer) { saveNote = "Your account has not answered yet. Showing the copy saved on this device."; updateFoot(); }
+    }, 10000);
+    function toDevice(note) { clearTimeout(wait); where = "device"; saveNote = note || ""; updateFoot(); }
+    function typing() { var a = document.activeElement; return !!(a && a.tagName === "INPUT" && a.type === "text"); }
+
+    // Runs on load and again whenever the other device saves a change.
+    function onDoc(snap) {
+      var definitive = !snap.metadata.fromCache;
+      if (definitive) { gotAnswer = true; clearTimeout(wait); saveNote = ""; where = "account"; }
+      var raw = snap.exists ? clone(snap.data()) : null;
+      var mine = S ? (S.updatedAt || 0) : 0;
+      if (raw && raw.reset) {
+        if (S && (raw.updatedAt || 0) > mine && !typing()) {
+          S = null;
+          try { localStorage.removeItem(KEY); } catch (e) {}
+          renderSetup();
+        }
+      } else if (raw) {
+        var remote = normalize(raw);
+        if (remote && (!S || (remote.updatedAt || 0) > mine)) {
+          if (!typing()) {
+            S = remote;
+            try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+            sel = first ? clamp(todayIdx(), 1, S.days) : clamp(sel, 1, S.days);
+            renderAll();
+          }
+        } else if (remote && S && definitive && mine > (remote.updatedAt || 0)) {
+          flush();
+        }
+      } else if (S && definitive) {
+        flush();
+      }
+      first = false;
+      updateFoot();
+    }
+
+    Promise.all([c.use("user"), c.use("db")]).then(function (r) {
+      var user = r[0], db = r[1];
+      if (!user || !db) { toDevice(""); return; }
+      return Promise.resolve(user.id()).then(function (id) {
+        if (!id) { toDevice(""); return; }
+        dbDoc = db.doc("data/users/" + id + "/challenge");
+        dbDoc.onSnapshot(onDoc, function () { toDevice("Could not reach your account. Progress is kept on this device."); });
+      });
+    }).catch(function () { toDevice(""); });
+  })();
+})();
+</script>
+
+</body></html>
